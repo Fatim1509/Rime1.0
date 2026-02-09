@@ -1,0 +1,139 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: rime-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-rime}
+      POSTGRES_USER: ${POSTGRES_USER:-rime_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rime_password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-rime_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - rime-network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: rime-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - rime-network
+
+  # Screen Capture Service (Python)
+  screen-service:
+    build:
+      context: ../services/screen-service
+      dockerfile: Dockerfile
+    container_name: rime-screen-service
+    environment:
+      - CAPTURE_INTERVAL=${CAPTURE_INTERVAL:-3000}
+      - SCREENSHOT_QUALITY=${SCREENSHOT_QUALITY:-85}
+      - MAX_SCREENSHOTS=${MAX_SCREENSHOTS:-50}
+      - ENABLE_MOCK=${ENABLE_MOCK:-false}
+    ports:
+      - "8000:8000"
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:ro
+    environment:
+      - DISPLAY=${DISPLAY}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - rime-network
+
+  # Core Engine (Node.js)
+  core-engine:
+    build:
+      context: ../services/core-engine
+      dockerfile: Dockerfile
+    container_name: rime-core-engine
+    environment:
+      - PORT=4000
+      - NODE_ENV=${NODE_ENV:-development}
+      - POSTGRES_URL=${POSTGRES_URL}
+      - REDIS_URL=${REDIS_URL}
+      - GOOGLE_AI_API_KEY=${GOOGLE_AI_API_KEY}
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+      - PINECONE_ENVIRONMENT=${PINECONE_ENVIRONMENT}
+      - SCREEN_SERVICE_URL=http://screen-service:8000
+      - ENABLE_MOCK=${ENABLE_MOCK:-false}
+      - MOCK_SCENARIO=${MOCK_SCENARIO:-coding}
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN}
+    ports:
+      - "4000:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      screen-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - rime-network
+
+  # Dashboard (Next.js)
+  dashboard:
+    build:
+      context: ../apps/dashboard
+      dockerfile: Dockerfile
+    container_name: rime-dashboard
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:4000
+      - NEXT_PUBLIC_WS_URL=ws://localhost:4000
+      - NODE_ENV=${NODE_ENV:-development}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - core-engine
+    networks:
+      - rime-network
+
+  # Nginx Reverse Proxy (Optional)
+  nginx:
+    image: nginx:alpine
+    container_name: rime-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - dashboard
+      - core-engine
+    networks:
+      - rime-network
+
+networks:
+  rime-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:

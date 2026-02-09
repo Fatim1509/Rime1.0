@@ -1,0 +1,162 @@
+import { BaseAgent } from './base-agent';
+import { UserIntent, ScreenContext, AgentResult } from '../types';
+
+export class CodeAgent extends BaseAgent {
+  readonly id = 'code' as const;
+  readonly name = 'Code Agent';
+  readonly capabilities = [
+    'fix error',
+    'explain code',
+    'refactor',
+    'optimize',
+    'debug',
+    'code review',
+    'suggest improvements',
+  ];
+  
+  async canHandle(intent: UserIntent): Promise<boolean> {
+    const query = intent.query.toLowerCase();
+    
+    // Trigger keywords
+    const triggers = [
+      'fix', 'error', 'bug', 'debug', 'explain', 'refactor',
+      'optimize', 'improve', 'review', 'what does', 'how does',
+      'why', 'syntax', 'undefined', 'null', 'exception'
+    ];
+    
+    return triggers.some(trigger => query.includes(trigger)) || 
+           this.matchesCapabilities(intent);
+  }
+  
+  async getConfidence(intent: UserIntent, context: ScreenContext): Promise<number> {
+    let confidence = 0.4;
+    
+    const query = intent.query.toLowerCase();
+    
+    // Very high confidence if there are actual errors
+    if (context.analysis.codeContext?.errors.length) {
+      confidence += 0.4;
+    }
+    
+    // High confidence for code-specific keywords
+    if (query.includes('fix') || query.includes('error') || query.includes('bug')) {
+      confidence += 0.3;
+    }
+    
+    if (query.includes('explain') || query.includes('what does')) {
+      confidence += 0.2;
+    }
+    
+    // Context-based confidence
+    if (context.analysis.application === 'vscode') {
+      confidence += 0.1;
+    }
+    
+    if (context.analysis.userActivity === 'debugging') {
+      confidence += 0.2;
+    }
+    
+    return Math.min(confidence, 1.0);
+  }
+  
+  async execute(intent: UserIntent, context: ScreenContext): Promise<AgentResult> {
+    this.setStatus('thinking', 0, 'Analyzing code context...');
+    
+    const actions = [];
+    const query = intent.query.toLowerCase();
+    
+    if (context.analysis.codeContext?.errors.length) {
+      // Error fixing mode
+      const errors = context.analysis.codeContext.errors;
+      
+      for (const error of errors.slice(0, 3)) { // Top 3 errors
+        actions.push(
+          this.createAction(
+            'code_fix',
+            `Fix: ${error.message}`,
+            `Suggested fix for ${error.severity} on line ${error.line}`,
+            {
+              error: error,
+              fileName: context.analysis.codeContext.fileName,
+              language: context.analysis.codeContext.language,
+              suggestedFix: this.generateMockFix(error, context.analysis.codeContext),
+            },
+            0.85
+          )
+        );
+      }
+      
+      // Explanation action
+      actions.push(
+        this.createAction(
+          'explain',
+          'Explain error',
+          `Detailed explanation of why this error occurs`,
+          {
+            error: errors[0],
+            explanation: this.generateMockExplanation(errors[0]),
+          },
+          0.8
+        )
+      );
+      
+    } else if (query.includes('explain') || query.includes('what does')) {
+      // Code explanation mode
+      actions.push(
+        this.createAction(
+          'explain',
+          'Explain code',
+          `Explain the selected code or function`,
+          {
+            code: context.analysis.codeContext?.codeSnippet || 'Selected code',
+            language: context.analysis.codeContext?.language || 'unknown',
+            explanation: 'This code...',
+          },
+          0.75
+        )
+      );
+      
+    } else {
+      // General code assistance
+      actions.push(
+        this.createAction(
+          'code_fix',
+          'Analyze code',
+          'Provide general code analysis and suggestions',
+          {
+            analysis: 'Code analysis would appear here',
+            suggestions: ['Use const instead of let', 'Add error handling'],
+          },
+          0.6
+        )
+      );
+    }
+    
+    this.setStatus('working', 70, 'Generating suggestions...');
+    
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    this.setStatus('idle', 100, 'Analysis complete');
+    
+    return {
+      agentId: this.id,
+      confidence: await this.getConfidence(intent, context),
+      actions,
+      explanation: `I can help fix errors and explain your code.`,
+      metadata: {
+        errorsFound: context.analysis.codeContext?.errors.length || 0,
+        language: context.analysis.codeContext?.language,
+      },
+    };
+  }
+  
+  private generateMockFix(error: any, codeContext: any): string {
+    // Mock code fix - in real implementation, this would use Gemini
+    return `// Suggested fix:\n// ${error.message}\n// Add proper error handling or type checking`;
+  }
+  
+  private generateMockExplanation(error: any): string {
+    // Mock explanation - in real implementation, this would use Gemini
+    return `This error occurs when... [detailed explanation would be generated by Gemini]`;
+  }
+}

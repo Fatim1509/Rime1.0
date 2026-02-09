@@ -1,0 +1,79 @@
+{
+  "name": "rime-vscode",
+  "displayName": "RIME AI Assistant",
+  "description": "AI-powered development assistant integrated with RIME",
+  "version": "1.0.0",
+  "publisher": "rime-team",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "rime.openPanel",
+        "title": "RIME: Open Panel"
+      },
+      {
+        "command": "rime.explainCode",
+        "title": "RIME: Explain This Code"
+      },
+      {
+        "command": "rime.fixError",
+        "title": "RIME: Fix This Error"
+      },
+      {
+        "command": "rime.generateDocs",
+        "title": "RIME: Generate Documentation"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "rime-sidebar",
+          "title": "RIME",
+          "icon": "media/icon.png"
+        }
+      ]
+    },
+    "views": {
+      "rime-sidebar": [
+        {
+          "id": "rimePanel",
+          "name": "AI Assistant"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "RIME",
+      "properties": {
+        "rime.apiUrl": {
+          "type": "string",
+          "default": "http://localhost:4000",
+          "description": "RIME API endpoint"
+        },
+        "rime.autoDetectErrors": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically detect and suggest fixes for errors"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "^20.x",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "axios": "^1.6.5",
+    "socket.io-client": "^4.6.1"
+  }
+}
